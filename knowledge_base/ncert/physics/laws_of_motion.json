@@ -1,0 +1,33 @@
+{
+  "chapter": "Laws of Motion",
+  "passages": [
+    {
+      "text": "Newton's First Law of Motion states that an object at rest stays at rest and an object in motion stays in motion with the same speed and in the same direction unless acted upon by an unbalanced force. This is also known as the law of inertia.",
+      "page": 96,
+      "topics": [
+        "Newton's Laws",
+        "Inertia",
+        "Force"
+      ]
+    },
+    {
+      "text": "Newton's Second Law of Motion states that the acceleration of an object is directly proportional to the net force acting on it and inversely proportional to its mass. Mathematically, F = ma, where F is force, m is mass, and a is acceleration.",
+      "page": 98,
+      "topics": [
+        "Newton's Laws",
+        "Force",
+        "Acceleration",
+        "Mass"
+      ]
+    },
+    {
+      "text": "Newton's Third Law of Motion states that for every action, there is an equal and opposite reaction. When object A exerts a force on object B, object B exerts an equal and opposite force on object A.",
+      "page": 102,
+      "topics": [
+        "Newton's Laws",
+        "Action-Reaction",
+        "Force Pairs"
+      ]
+    }
+  ]
+}

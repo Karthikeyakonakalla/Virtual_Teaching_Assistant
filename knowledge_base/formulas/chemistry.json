@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Ideal Gas Law",
+    "formula": "PV = nRT",
+    "description": "Pressure times volume equals moles times gas constant times temperature",
+    "conditions": "For ideal gases",
+    "topics": [
+      "Gases",
+      "Thermodynamics",
+      "State Equations"
+    ]
+  },
+  {
+    "name": "pH Formula",
+    "formula": "pH = -log[H\u207a]",
+    "description": "pH is the negative logarithm of hydrogen ion concentration",
+    "conditions": "For aqueous solutions",
+    "topics": [
+      "Acids and Bases",
+      "pH",
+      "Equilibrium"
+    ]
+  },
+  {
+    "name": "Rate Law",
+    "formula": "Rate = k[A]\u1d50[B]\u207f",
+    "description": "Reaction rate equals rate constant times concentration terms raised to their orders",
+    "conditions": "For elementary reactions",
+    "topics": [
+      "Chemical Kinetics",
+      "Reaction Rate",
+      "Rate Laws"
+    ]
+  }
+]
