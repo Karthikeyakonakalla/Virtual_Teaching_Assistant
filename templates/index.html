@@ -85,6 +85,7 @@
                             <i class="fas fa-paper-plane"></i> Get Solution
                         </button>
                     </div>
+                    <div id="thinkingTimerText" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
                 </div>
             </div>
 
@@ -132,6 +133,7 @@
                     <button id="submitImageBtn" class="submit-btn" style="display: none;">
                         <i class="fas fa-search"></i> Analyze Image
                     </button>
+                    <div id="imageThinkingTimer" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
                 </div>
             </div>
         </div>
@@ -176,6 +178,19 @@
 
             <!-- Final Answer -->
             <div id="finalAnswer" class="solution-card answer-highlight"></div>
+
+            <!-- Follow-up Questions -->
+            <div id="followUpSection" class="solution-card follow-up" style="display: none;">
+                <h3><i class="fas fa-question-circle"></i> Ask a Follow-up</h3>
+                <div class="follow-up-body">
+                    <textarea id="followUpInput" rows="2" placeholder="Ask a follow-up about this solution..."></textarea>
+                    <button id="followUpBtn" class="submit-btn">
+                        <i class="fas fa-paper-plane"></i> Ask Follow-up
+                    </button>
+                </div>
+                <div id="followUpThinking" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
+                <div id="followUpResponses" class="follow-up-responses"></div>
+            </div>
 
             <!-- Verification -->
             <div id="verification" class="solution-card" style="display: none;">

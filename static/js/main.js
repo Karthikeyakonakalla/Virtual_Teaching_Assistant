@@ -7,6 +7,9 @@ let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
 let recordingSeconds = 0;
+const thinkingTimers = {};
+const thinkingStartTimes = {};
+let latestSolutionText = '';
 
 // API Base URL
 const API_BASE = '/api';
@@ -19,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeImageInput();
     initializeFeedback();
     initializeAudioPlayer();
+    initializeFollowUp();
 });
 
 // Tab switching functionality
@@ -65,6 +69,7 @@ function initializeTextInput() {
 // Submit text query
 async function submitTextQuery(query) {
     try {
+        startThinkingTimer('thinkingTimerText');
         showLoading(true);
         hideSolution();
         
@@ -96,6 +101,7 @@ async function submitTextQuery(query) {
         showNotification('Failed to connect to server', 'error');
     } finally {
         showLoading(false);
+        stopThinkingTimer('thinkingTimerText');
     }
 }
 
@@ -207,6 +213,7 @@ function updateRecordingTime() {
 // Submit audio query
 async function submitAudioQuery(audioBlob) {
     try {
+        startThinkingTimer('thinkingTimerText');
         showLoading(true);
         hideSolution();
         
@@ -242,6 +249,7 @@ async function submitAudioQuery(audioBlob) {
         showNotification('Failed to process audio', 'error');
     } finally {
         showLoading(false);
+        stopThinkingTimer('thinkingTimerText');
     }
 }
 
@@ -343,6 +351,7 @@ function clearImagePreview() {
 // Submit image query
 async function submitImageQuery(file) {
     try {
+        startThinkingTimer('imageThinkingTimer');
         showLoading(true);
         hideSolution();
         
@@ -375,6 +384,7 @@ async function submitImageQuery(file) {
         showNotification('Failed to process image', 'error');
     } finally {
         showLoading(false);
+        stopThinkingTimer('imageThinkingTimer');
     }
 }
 
@@ -439,6 +449,14 @@ function displaySolution(data) {
         `;
         answerDiv.style.display = 'block';
     }
+
+    latestSolutionText = solution.display_text || extractSolutionText();
+
+    // Follow-up section visibility
+    const followUpSection = document.getElementById('followUpSection');
+    if (currentQueryId) {
+        followUpSection.style.display = 'block';
+    }
     
     // Verification
     if (solution.verification) {
@@ -489,30 +507,159 @@ function toggleExpand(btn) {
 // Hide solution
 function hideSolution() {
     document.getElementById('solutionSection').style.display = 'none';
+    const followUpSection = document.getElementById('followUpSection');
+    if (followUpSection) {
+        followUpSection.style.display = 'none';
+        document.getElementById('followUpResponses').innerHTML = '';
+        document.getElementById('followUpInput').value = '';
+    }
+    stopThinkingTimer('thinkingTimerText');
+    stopThinkingTimer('imageThinkingTimer');
+    stopThinkingTimer('followUpThinking');
+    latestSolutionText = '';
+}
+
+function startThinkingTimer(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    stopThinkingTimer(elementId);
+    element.style.display = 'block';
+    element.textContent = 'Thinking… 00:00.000';
+    thinkingStartTimes[elementId] = performance.now();
+
+    thinkingTimers[elementId] = setInterval(() => {
+        const start = thinkingStartTimes[elementId];
+        if (!start) return;
+        const elapsed = performance.now() - start;
+        element.textContent = `Thinking… ${formatElapsedTime(elapsed)}`;
+    }, 25);
+}
+
+function stopThinkingTimer(elementId) {
+    const element = document.getElementById(elementId);
+    if (thinkingTimers[elementId]) {
+        clearInterval(thinkingTimers[elementId]);
+        delete thinkingTimers[elementId];
+    }
+    if (element) {
+        element.style.display = 'none';
+    }
+    delete thinkingStartTimes[elementId];
+}
+
+function formatElapsedTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    const milliseconds = Math.floor(ms % 1000).toString().padStart(3, '0');
+    return `${minutes}:${seconds}.${milliseconds}`;
+}
+
+function initializeFollowUp() {
+    const followUpBtn = document.getElementById('followUpBtn');
+    if (!followUpBtn) return;
+
+    followUpBtn.addEventListener('click', async () => {
+        const input = document.getElementById('followUpInput');
+        if (!input) return;
+        const question = input.value.trim();
+
+        if (!currentQueryId) {
+            showNotification('Submit a primary question first.', 'error');
+            return;
+        }
+
+        if (!question) {
+            showNotification('Enter a follow-up question.', 'error');
+            return;
+        }
+
+        try {
+            startThinkingTimer('followUpThinking');
+            followUpBtn.disabled = true;
+            followUpBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Asking...';
+
+            const response = await fetch(`${API_BASE}/query/${currentQueryId}/followup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                },
+                body: JSON.stringify({
+                    question,
+                    previous_solution: latestSolutionText
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const answerText = data.answer || data.solution?.display_text || '';
+                appendFollowUpResponse(question, answerText);
+                input.value = '';
+                latestSolutionText = `${latestSolutionText}\n\nFollow-up Q: ${question}\n${answerText}`.trim();
+            } else {
+                showNotification(data.error || 'Failed to process follow-up.', 'error');
+            }
+        } catch (error) {
+            console.error('Error submitting follow-up:', error);
+            showNotification('Failed to submit follow-up.', 'error');
+        } finally {
+            stopThinkingTimer('followUpThinking');
+            followUpBtn.disabled = false;
+            followUpBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Ask Follow-up';
+        }
+    });
+}
+
+function appendFollowUpResponse(question, answer) {
+    const responses = document.getElementById('followUpResponses');
+    if (!responses) return;
+
+    const container = document.createElement('div');
+    container.className = 'follow-up-response';
+
+    const questionDiv = document.createElement('div');
+    questionDiv.className = 'follow-up-question';
+    questionDiv.textContent = `Q: ${question}`;
+
+    const answerDiv = document.createElement('div');
+    answerDiv.className = 'follow-up-answer';
+    answerDiv.textContent = answer;
+
+    container.appendChild(questionDiv);
+    container.appendChild(answerDiv);
+
+    responses.prepend(container);
+
+    if (window.MathJax) {
+        MathJax.typesetPromise();
+    }
 }
 
 // Audio functionality
 function initializeAudioPlayer() {
     const audioBtn = document.getElementById('audioBtn');
-    
+    if (!audioBtn) return;
+
     audioBtn.addEventListener('click', async () => {
         if (!currentQueryId) return;
-        
+
         try {
             audioBtn.disabled = true;
             audioBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            
-            // Get solution text
+
             const solutionText = extractSolutionText();
-            
+
             const response = await fetch(`${API_BASE}/query/${currentQueryId}/audio?text=${encodeURIComponent(solutionText)}`, {
                 headers: {
                     'Authorization': `Bearer ${getAuthToken()}`
                 }
             });
-            
+
             const data = await response.json();
-            
+
             if (data.success && data.audio) {
                 playAudio(data.audio, data.format);
             } else {
@@ -526,20 +673,6 @@ function initializeAudioPlayer() {
             audioBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
         }
     });
-}
-
-// Extract solution text for audio
-function extractSolutionText() {
-    const sections = [
-        document.querySelector('#problemUnderstanding p'),
-        document.querySelector('#stepsSolution .steps-content'),
-        document.querySelector('#finalAnswer')
-    ];
-    
-    return sections
-        .filter(s => s)
-        .map(s => s.textContent)
-        .join('\n\n');
 }
 
 // Play audio

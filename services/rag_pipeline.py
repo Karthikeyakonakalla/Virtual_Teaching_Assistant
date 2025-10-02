@@ -4,11 +4,12 @@ import os
 import logging
 import pickle
 import json
-import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
 import numpy as np
 import faiss
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,32 @@ class RAGPipeline:
     def __init__(self, index_path: Optional[str] = None, embedding_model: Optional[str] = None):
         """Initialize the RAG pipeline."""
         self.index_path = index_path or os.getenv('FAISS_INDEX_PATH', 'knowledge_base/index/faiss_index')
-        self.embedding_model_name = embedding_model or os.getenv('GROQ_EMBEDDING_MODEL', 'meta-llama/llama-4-scout-17b-16e-instruct')
+        self.embedding_model_name = embedding_model or os.getenv('GROQ_EMBEDDING_MODEL', 'text-embedding-3-small')
 
-        # Simulated embedding configuration
-        self.embedding_dim = int(os.getenv('SIMULATED_EMBEDDING_DIM', 256))
-        self.simulation_seed = int(os.getenv('SIMULATED_EMBEDDING_SEED', 42))
-        logger.info(
-            "Initialized simulated RAG pipeline (dim=%d, seed=%d)",
-            self.embedding_dim,
-            self.simulation_seed
-        )
+        keys_env = os.getenv('GROQ_API_KEYS')
+        primary_key = os.getenv('GROQ_API_KEY')
 
-        # Load or create index
+        api_keys: List[str] = []
+        if keys_env:
+            api_keys.extend([key.strip() for key in keys_env.split(',') if key.strip()])
+        if primary_key:
+            if primary_key not in api_keys:
+                api_keys.insert(0, primary_key)
+
+        if not api_keys:
+            logger.error("No Groq API keys configured. Set GROQ_API_KEY or GROQ_API_KEYS.")
+            raise ValueError("At least one Groq API key is required for RAGPipeline")
+
+        self.api_keys = api_keys
+        self.current_key_index = 0
+        self.client: Optional[Groq] = None
+
+        self.embedding_dim: Optional[int] = None
         self.index = None
-        self.documents = []
-        self.metadata = []
+        self.documents: List[str] = []
+        self.metadata: List[Dict[str, Any]] = []
+
+        self._initialize_client()
         self._load_or_create_index()
     
     def _load_or_create_index(self):
@@ -46,6 +58,7 @@ class RAGPipeline:
             try:
                 # Load existing index
                 self.index = faiss.read_index(index_file)
+                self.embedding_dim = self.index.d
                 
                 with open(docs_file, 'rb') as f:
                     self.documents = pickle.load(f)
@@ -64,12 +77,14 @@ class RAGPipeline:
     
     def _create_new_index(self):
         """Create a new FAISS index."""
-        # Create FAISS index with correct dimension for Groq embeddings
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        if self.embedding_dim:
+            self.index = faiss.IndexFlatL2(self.embedding_dim)
+            logger.info(f"Created new index with dimension {self.embedding_dim}")
+        else:
+            self.index = None
+            logger.info("Initialized empty RAG index; dimension will be set on first embedding call")
         self.documents = []
         self.metadata = []
-
-        logger.info(f"Created new index with dimension {self.embedding_dim}")
     
     def add_documents(
         self,
@@ -91,8 +106,11 @@ class RAGPipeline:
         if metadata is None:
             metadata = [{}] * len(documents)
         
-        # Generate simulated embeddings (no external API calls)
-        embeddings = self._generate_simulated_embeddings(documents)
+        # Generate embeddings using Groq
+        embeddings = self._generate_embeddings(documents, batch_size=batch_size)
+        if not embeddings:
+            logger.warning("No embeddings generated for documents; skipping add")
+            return
         
         # Convert to numpy array
         embeddings = np.array(embeddings, dtype='float32')
@@ -130,9 +148,11 @@ class RAGPipeline:
             return []
         
         try:
-            # Encode query using simulated embeddings
-            query_embedding = self._generate_simulated_embeddings([query])[0]
-            query_embedding = np.array([query_embedding], dtype='float32')
+            query_embeddings = self._generate_embeddings([query], batch_size=1)
+            if not query_embeddings:
+                logger.warning("Failed to generate embedding for query")
+                return []
+            query_embedding = np.array([query_embeddings[0]], dtype='float32')
             
             # Search in index
             distances, indices = self.index.search(query_embedding, min(top_k * 2, self.index.ntotal))
@@ -177,6 +197,9 @@ class RAGPipeline:
     def save_index(self):
         """Save the index and documents to disk."""
         try:
+            if self.index is None:
+                logger.warning("No FAISS index to save; skipping")
+                return
             # Create directory if needed
             os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
             
@@ -367,19 +390,113 @@ class RAGPipeline:
         
         return stats
 
-    def _generate_simulated_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Generate deterministic simulated embeddings without external API calls."""
+    def _initialize_client(self):
+        """Initialize Groq client with the current API key."""
+        api_key = self.api_keys[self.current_key_index]
+        self.client = Groq(api_key=api_key)
+
+    def _rotate_key(self) -> bool:
+        """Rotate to the next API key. Returns False if all keys exhausted."""
+        if len(self.api_keys) <= 1:
+            return False
+
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        if self.current_key_index == 0:
+            return False
+
+        try:
+            self._initialize_client()
+            logger.warning(
+                "Switched to fallback Groq key (%d/%d)",
+                self.current_key_index + 1,
+                len(self.api_keys)
+            )
+            return True
+        except Exception as exc:
+            logger.error(f"Failed to initialize Groq client with fallback key: {exc}")
+            return False
+
+    def _execute_with_retry(self, operation):
+        """Execute Groq operation with rate-limit handling and key rotation."""
+        attempts = len(self.api_keys)
+
+        for _ in range(attempts):
+            try:
+                return operation()
+            except Exception as exc:
+                message = str(exc)
+                is_rate_limit = '429' in message or 'rate limit' in message.lower()
+
+                if is_rate_limit and self._rotate_key():
+                    continue
+
+                raise
+
+        raise RuntimeError("All Groq API keys exhausted due to rate limiting during embedding generation")
+
+    def _embed_batches(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+        """Embed texts using Groq embeddings endpoint."""
         embeddings: List[List[float]] = []
 
-        for text in texts:
-            # Derive a stable seed from text content combined with base seed
-            digest = hashlib.sha256(text.encode('utf-8')).digest()
-            seed = int.from_bytes(digest[:8], 'big') ^ self.simulation_seed
-            rng = np.random.default_rng(seed)
-            vector = rng.normal(loc=0.0, scale=1.0, size=self.embedding_dim)
-            norm = np.linalg.norm(vector)
-            if norm != 0:
-                vector = vector / norm
-            embeddings.append(vector.astype(float).tolist())
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            if not batch:
+                continue
 
+            response = self._execute_with_retry(
+                lambda: self.client.embeddings.create(
+                    model=self.embedding_model_name,
+                    input=batch
+                )
+            )
+
+            data = getattr(response, 'data', None)
+            if data is None and isinstance(response, dict):
+                data = response.get('data', [])
+
+            if not data:
+                logger.warning("Embedding response returned no data for batch of size %d", len(batch))
+                continue
+
+            for item in data:
+                embedding = getattr(item, 'embedding', None)
+                if embedding is None and isinstance(item, dict):
+                    embedding = item.get('embedding')
+                if embedding is None:
+                    raise ValueError("Embedding response missing 'embedding' field")
+                embeddings.append([float(x) for x in embedding])
+
+        return embeddings
+
+    def _ensure_index_dimension(self, dimension: int):
+        """Ensure FAISS index matches provided embedding dimension."""
+        if dimension <= 0:
+            raise ValueError("Embedding dimension must be positive")
+
+        if self.index is not None and self.index.d == dimension:
+            self.embedding_dim = dimension
+            return
+
+        if self.index is not None and self.index.ntotal > 0 and self.index.d != dimension:
+            logger.warning(
+                "Embedding dimension changed from %d to %d. Rebuilding FAISS index.",
+                self.index.d,
+                dimension
+            )
+            existing_docs = list(self.documents)
+            self.index = faiss.IndexFlatL2(dimension)
+            if existing_docs:
+                existing_embeddings = self._embed_batches(existing_docs)
+                if existing_embeddings:
+                    self.index.add(np.array(existing_embeddings, dtype='float32'))
+        else:
+            self.index = faiss.IndexFlatL2(dimension)
+
+        self.embedding_dim = dimension
+
+    def _generate_embeddings(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+        """Generate embeddings for the provided texts."""
+        embeddings = self._embed_batches(texts, batch_size=batch_size)
+        if embeddings:
+            self._ensure_index_dimension(len(embeddings[0]))
         return embeddings

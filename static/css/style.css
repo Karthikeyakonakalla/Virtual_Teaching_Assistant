@@ -73,25 +73,41 @@ body {
     transition: var(--transition);
 }
 
-.nav-link:hover,
 .nav-link.active {
     color: var(--primary-color);
 }
 
 .btn-login {
-    background: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color), #6C63FF);
     color: var(--white);
     border: none;
-    padding: 0.5rem 1.5rem;
-    border-radius: 25px;
-    font-weight: 500;
+    padding: 0.65rem 1.6rem;
+    border-radius: 999px;
+    font-weight: 600;
     cursor: pointer;
-    transition: var(--transition);
+    box-shadow: 0 12px 24px -18px rgba(33, 150, 243, 0.9);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-login:hover {
-    background: #357ABD;
     transform: translateY(-2px);
+    box-shadow: 0 16px 32px -18px rgba(33, 150, 243, 0.9);
+}
+
+.btn-login:active {
+    animation: pulse 0.45s ease-in-out;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* Main Container */
@@ -242,6 +258,13 @@ body {
 .submit-btn:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
+}
+
+.thinking-timer {
+    margin-top: 0.75rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    color: var(--secondary-color);
 }
 
 /* Voice Input */
@@ -500,6 +523,56 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.follow-up {
+    margin-top: 1.5rem;
+}
+
+.follow-up-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.follow-up textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    resize: vertical;
+    min-height: 80px;
+    font-size: 1rem;
+}
+
+.follow-up-body .submit-btn {
+    align-self: flex-end;
+}
+
+.follow-up-responses {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.follow-up-response {
+    background: var(--light-bg);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border-color);
+}
+
+.follow-up-question {
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.follow-up-answer {
+    white-space: pre-wrap;
+    color: var(--text-dark);
+    line-height: 1.5;
 }
 
 /* Steps */

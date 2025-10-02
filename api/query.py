@@ -204,6 +204,76 @@ def submit_query():
         }), 500
 
 
+@query_bp.route('/query/<query_id>/followup', methods=['POST'])
+def submit_followup(query_id):
+    """Handle follow-up questions for an existing query."""
+    init_services()
+
+    try:
+        data = request.get_json(silent=True) or {}
+        question = (data.get('question') or '').strip()
+        previous_solution = (data.get('previous_solution') or '').strip()
+
+        if not question:
+            return jsonify({
+                'success': False,
+                'error': 'Follow-up question is required.'
+            }), 400
+
+        subject = detect_subject(question)
+
+        context = rag_pipeline.search(
+            question,
+            top_k=current_app.config['TOP_K_RETRIEVAL'],
+            subject_filter=subject
+        )
+
+        if previous_solution:
+            context.insert(0, {
+                'content': f"Previous solution summary:\n{previous_solution}"
+            })
+
+        followup_prompt = (
+            "You previously answered a problem. Use that context if provided and answer the follow-up question.\n"
+            f"Follow-up Question: {question}"
+        )
+
+        response = gemini_client.generate_response(
+            followup_prompt,
+            context,
+            temperature=current_app.config['TEMPERATURE'],
+            max_tokens=current_app.config['MAX_TOKENS']
+        )
+
+        if not response['success']:
+            return jsonify({
+                'success': False,
+                'query_id': query_id,
+                'error': response.get('error', 'Failed to generate follow-up answer')
+            }), 500
+
+        formatted = solution_formatter.format_solution(
+            response['answer'],
+            query_type=detect_query_type(question)
+        )
+
+        return jsonify({
+            'success': True,
+            'query_id': query_id,
+            'answer': formatted.get('display_text', response['answer']),
+            'solution': formatted,
+            'context_used': context,
+            'subject': subject
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing follow-up: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @query_bp.route('/query/<query_id>', methods=['GET'])
 def get_query_result(query_id):
     """Get the result of a processed query.
