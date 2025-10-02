@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: vta-jee-app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./knowledge_base:/app/knowledge_base
+      - ./vta_jee.db:/app/vta_jee.db
+    networks:
+      - vta-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: vta-jee-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - vta-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: vta-jee-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./static:/usr/share/nginx/html/static
+    networks:
+      - vta-network
+    depends_on:
+      - web
+    restart: unless-stopped
+
+networks:
+  vta-network:
+    driver: bridge
+
+volumes:
+  uploads:
+  logs:
+  knowledge_base:

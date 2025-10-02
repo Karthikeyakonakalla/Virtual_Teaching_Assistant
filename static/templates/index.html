@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VTA JEE - Virtual Teaching Assistant</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- MathJax for LaTeX rendering -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <!-- MathJax Configuration -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+            }
+        };
+    </script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-graduation-cap"></i>
+                <span>VTA JEE</span>
+            </div>
+            <div class="nav-menu">
+                <a href="#" class="nav-link active">Home</a>
+                <a href="#history" class="nav-link">History</a>
+                <a href="#about" class="nav-link">About</a>
+                <button id="loginBtn" class="btn-login">Login</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="hero">
+            <h1>JEE Mains Virtual Teaching Assistant</h1>
+            <p>Get instant, step-by-step solutions for Physics, Chemistry, and Mathematics problems</p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="input-section">
+            <div class="input-tabs">
+                <button class="tab-btn active" data-tab="text">
+                    <i class="fas fa-keyboard"></i> Text
+                </button>
+                <button class="tab-btn" data-tab="voice">
+                    <i class="fas fa-microphone"></i> Voice
+                </button>
+                <button class="tab-btn" data-tab="image">
+                    <i class="fas fa-camera"></i> Image
+                </button>
+            </div>
+
+            <!-- Text Input Tab -->
+            <div class="tab-content active" id="text-tab">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="textInput" 
+                        class="text-input" 
+                        placeholder="Type your JEE question here...&#10;Example: A particle is moving with velocity v = 3t²i + 2tj. Find its acceleration at t = 2s."
+                        rows="4"></textarea>
+                    <div class="input-footer">
+                        <select id="subjectSelect" class="subject-select">
+                            <option value="">Auto-detect Subject</option>
+                            <option value="physics">Physics</option>
+                            <option value="chemistry">Chemistry</option>
+                            <option value="mathematics">Mathematics</option>
+                        </select>
+                        <button id="submitTextBtn" class="submit-btn">
+                            <i class="fas fa-paper-plane"></i> Get Solution
+                        </button>
+                    </div>
+                    <div id="thinkingTimerText" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
+                </div>
+            </div>
+
+            <!-- Voice Input Tab -->
+            <div class="tab-content" id="voice-tab">
+                <div class="voice-wrapper">
+                    <div class="voice-visualizer" id="voiceVisualizer">
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                    </div>
+                    <button id="recordBtn" class="record-btn">
+                        <i class="fas fa-microphone"></i>
+                        <span>Start Recording</span>
+                    </button>
+                    <div id="recordingTime" class="recording-time" style="display: none;">00:00</div>
+                    <div id="transcription" class="transcription" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Image Input Tab -->
+            <div class="tab-content" id="image-tab">
+                <div class="image-wrapper">
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="imageInput" accept="image/*" hidden>
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>Upload Image</h3>
+                        <p>Drag & drop or click to upload</p>
+                        <span class="upload-hint">Supports JPG, PNG, PDF (max 16MB)</span>
+                    </div>
+                    <div id="imagePreview" class="image-preview" style="display: none;">
+                        <img id="previewImg" src="" alt="Preview">
+                        <button id="removeImageBtn" class="remove-btn">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <textarea 
+                        id="imageContext" 
+                        class="context-input" 
+                        placeholder="Optional: Add any context or specific question about the image..."
+                        rows="2"
+                        style="display: none;"></textarea>
+                    <button id="submitImageBtn" class="submit-btn" style="display: none;">
+                        <i class="fas fa-search"></i> Analyze Image
+                    </button>
+                    <div id="imageThinkingTimer" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <p>Processing your question...</p>
+        </div>
+
+        <!-- Solution Section -->
+        <div id="solutionSection" class="solution-section" style="display: none;">
+            <div class="solution-header">
+                <h2><i class="fas fa-lightbulb"></i> Solution</h2>
+                <div class="solution-actions">
+                    <button id="audioBtn" class="action-btn" title="Listen to solution">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <button id="copyBtn" class="action-btn" title="Copy solution">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button id="feedbackBtn" class="action-btn" title="Give feedback">
+                        <i class="fas fa-comment"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Problem Understanding -->
+            <div id="problemUnderstanding" class="solution-card"></div>
+
+            <!-- Formulas Used -->
+            <div id="formulasUsed" class="solution-card" style="display: none;">
+                <h3><i class="fas fa-calculator"></i> Formulas & Concepts</h3>
+                <div class="formulas-content"></div>
+            </div>
+
+            <!-- Step-by-Step Solution -->
+            <div id="stepsSolution" class="solution-card">
+                <h3><i class="fas fa-list-ol"></i> Step-by-Step Solution</h3>
+                <div class="steps-content"></div>
+            </div>
+
+            <!-- Final Answer -->
+            <div id="finalAnswer" class="solution-card answer-highlight"></div>
+
+            <!-- Follow-up Questions -->
+            <div id="followUpSection" class="solution-card follow-up" style="display: none;">
+                <h3><i class="fas fa-question-circle"></i> Ask a Follow-up</h3>
+                <div class="follow-up-body">
+                    <textarea id="followUpInput" rows="2" placeholder="Ask a follow-up about this solution..."></textarea>
+                    <button id="followUpBtn" class="submit-btn">
+                        <i class="fas fa-paper-plane"></i> Ask Follow-up
+                    </button>
+                </div>
+                <div id="followUpThinking" class="thinking-timer" style="display: none;">Thinking… 00:00.000</div>
+                <div id="followUpResponses" class="follow-up-responses"></div>
+            </div>
+
+            <!-- Verification -->
+            <div id="verification" class="solution-card" style="display: none;">
+                <h3><i class="fas fa-check-circle"></i> Verification</h3>
+                <div class="verification-content"></div>
+            </div>
+
+            <!-- Context References -->
+            <div id="references" class="solution-card" style="display: none;">
+                <h3><i class="fas fa-book"></i> References</h3>
+                <div class="references-content"></div>
+            </div>
+
+            <!-- Confidence Score -->
+            <div id="confidenceScore" class="confidence-meter">
+                <span>Confidence: </span>
+                <div class="confidence-bar">
+                    <div class="confidence-fill"></div>
+                </div>
+                <span class="confidence-value">0%</span>
+            </div>
+        </div>
+
+        <!-- Feedback Modal -->
+        <div id="feedbackModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="modal-close">&times;</span>
+                <h2>How was the solution?</h2>
+                <div class="rating-stars">
+                    <i class="far fa-star" data-rating="1"></i>
+                    <i class="far fa-star" data-rating="2"></i>
+                    <i class="far fa-star" data-rating="3"></i>
+                    <i class="far fa-star" data-rating="4"></i>
+                    <i class="far fa-star" data-rating="5"></i>
+                </div>
+                <textarea 
+                    id="feedbackComment" 
+                    placeholder="Any comments or suggestions?"
+                    rows="3"></textarea>
+                <div class="issue-types">
+                    <label><input type="radio" name="issue" value="correct"> Correct solution</label>
+                    <label><input type="radio" name="issue" value="wrong_answer"> Wrong answer</label>
+                    <label><input type="radio" name="issue" value="unclear"> Unclear explanation</label>
+                    <label><input type="radio" name="issue" value="incomplete"> Incomplete solution</label>
+                </div>
+                <button id="submitFeedbackBtn" class="submit-btn">Submit Feedback</button>
+            </div>
+        </div>
+
+        <!-- Audio Player -->
+        <audio id="audioPlayer" style="display: none;"></audio>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 VTA JEE. Powered by Google Gemini AI</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
