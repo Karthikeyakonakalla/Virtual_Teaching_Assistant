@@ -9,9 +9,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 
 from config import get_config
+from models import db
 
 # Initialize extensions
-db = SQLAlchemy()
 migrate = Migrate()
 
 # Configure logging
@@ -51,6 +51,21 @@ def create_app(config_name=None):
         """Render the main application page."""
         return render_template('index.html')
     
+    @app.route('/login')
+    def login_page():
+        """Render the login page."""
+        return render_template('login.html')
+
+    @app.route('/signup')
+    def signup_page():
+        """Render the signup page."""
+        return render_template('signup.html')
+
+    @app.route('/account')
+    def account_page():
+        """Render the user account dashboard."""
+        return render_template('account.html')
+
     # Health check endpoint
     @app.route('/health')
     def health():
@@ -88,6 +103,6 @@ if __name__ == '__main__':
     # Run the application
     app.run(
         host='0.0.0.0',
-        port=7415,
+        port=5048,
         debug=app.config['DEBUG']
     )

@@ -301,3 +301,34 @@ def require_auth(f):
         return f(*args, **kwargs)
     
     return decorated_function
+
+
+def get_user_from_request():
+    """Return the authenticated user derived from the Authorization header.
+    
+    Returns:
+        User instance if the token is valid, otherwise None.
+    """
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return None
+
+    try:
+        token = auth_header.split(' ')[1]
+    except IndexError:
+        return None
+
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.config['SECRET_KEY'],
+            algorithms=['HS256']
+        )
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+    user_id = payload.get('user_id')
+    if not user_id:
+        return None
+
+    return User.query.get(user_id)

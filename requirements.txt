@@ -1,7 +1,6 @@
 # Core Framework
 Flask==3.0.0
 Flask-CORS==4.0.0
-Flask-RESTful==0.3.10
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 
@@ -17,15 +16,9 @@ alembic==1.13.1
 
 # Image Processing
 Pillow==10.1.0
-opencv-python==4.8.1.78
 
 # Audio Processing (keeping for now, will use Groq when available)
 pydub==0.25.1
-gTTS==2.5.3
-pyttsx3==2.90
-SpeechRecognition==3.10.0
-soundfile==0.12.1
-librosa==0.10.1
 
 # NLP & Text Processing (reduced dependencies)
 nltk==3.8.1
@@ -42,16 +35,10 @@ matplotlib==3.8.2
 # Utilities
 python-dotenv==1.0.0
 packaging==23.2
-requests==2.31.0
-aiohttp==3.9.1
-asyncio==3.4.3
-redis==5.0.1
-celery==5.3.4
 
 # Authentication & Security
 PyJWT==2.8.0
 bcrypt==4.1.2
-cryptography==41.0.7
 
 # Development & Testing
 pytest==7.4.3

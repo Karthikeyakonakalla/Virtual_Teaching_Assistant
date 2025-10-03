@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Account • VTA JEE</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    {% include 'partials/navbar.html' %}
+
+    <main class="account-container">
+        <section class="account-header">
+            <div>
+                <h1>Welcome back, <span id="userName">Student</span></h1>
+                <p>Track your previous questions and review their solutions anytime.</p>
+            </div>
+            <a class="btn-primary" href="/">Ask a new question</a>
+        </section>
+
+        <section class="history-panel">
+            <div class="panel-header">
+                <h2><i class="fas fa-history"></i> Recent History</h2>
+                <button id="refreshHistoryBtn" class="btn-icon" title="Refresh">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div id="historyPlaceholder" class="panel-placeholder">Loading your history...</div>
+            <ul id="historyList" class="history-list"></ul>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/account.js') }}" defer></script>
+</body>
+</html>

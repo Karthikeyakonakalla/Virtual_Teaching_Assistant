@@ -2,10 +2,13 @@
 
 import os
 import uuid
+import time
 import logging
+from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
+from sqlalchemy.exc import SQLAlchemyError
 
 from services import (
     GeminiClient,
@@ -17,6 +20,9 @@ from services import (
 )
 
 logger = logging.getLogger(__name__)
+
+from api.auth import require_auth
+from models import Query, db
 
 # Create blueprint
 query_bp = Blueprint('query', __name__)
@@ -33,7 +39,7 @@ solution_formatter = None
 def init_services():
     """Initialize all services."""
     global gemini_client, ocr_service, stt_service, tts_service, rag_pipeline, solution_formatter
-    
+
     if not gemini_client:
         gemini_client = GeminiClient()
     if not ocr_service:
@@ -48,7 +54,112 @@ def init_services():
         solution_formatter = SolutionFormatter()
 
 
+def store_query_record(
+    *,
+    query_id: str,
+    user_id: int | None,
+    input_type: str,
+    query_text: str,
+    subject: str | None,
+    query_type: str | None,
+    formatted_solution: dict | None,
+    raw_solution: str | None,
+    context: list | None,
+    audio_path: str | None,
+    image_path: str | None,
+    processing_time: float | None
+) -> None:
+    """Persist a processed query for the authenticated user."""
+
+    if not user_id:
+        return
+
+    try:
+        query = Query(
+            id=query_id,
+            user_id=user_id,
+            input_type=input_type,
+            query_text=query_text,
+            subject=subject,
+            query_type=query_type,
+            solution=formatted_solution,
+            raw_solution=raw_solution,
+            confidence_score=(formatted_solution or {}).get('confidence_score'),
+            context_used=context,
+            audio_path=audio_path,
+            image_path=image_path,
+            status='completed',
+            processed_at=datetime.utcnow(),
+            processing_time=processing_time
+        )
+
+        db.session.add(query)
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        logger.error("Failed to store query record: %s", exc)
+
+
+@query_bp.route('/history', methods=['GET'], endpoint='user_history')
+@require_auth
+def user_history():
+    """Return the authenticated user's query history."""
+    try:
+        user_id = getattr(request, 'user_id', None)
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            }), 401
+
+        try:
+            limit = int(request.args.get('limit', 20))
+        except (TypeError, ValueError):
+            limit = 20
+
+        limit = max(1, min(limit, 100))
+
+        query_records = (
+            Query.query
+            .filter_by(user_id=user_id)
+            .order_by(Query.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        history = []
+        for record in query_records:
+            solution_data = record.solution or {}
+            history.append({
+                'id': record.id,
+                'input_type': record.input_type,
+                'query_text': record.query_text,
+                'subject': record.subject,
+                'query_type': record.query_type,
+                'status': record.status,
+                'created_at': record.created_at.isoformat() if record.created_at else None,
+                'processed_at': record.processed_at.isoformat() if record.processed_at else None,
+                'final_answer': solution_data.get('final_answer'),
+                'confidence_score': record.confidence_score,
+                'processing_time': record.processing_time,
+                'steps': solution_data.get('steps')
+            })
+
+        return jsonify({
+            'success': True,
+            'history': history
+        })
+
+    except SQLAlchemyError as exc:
+        logger.error("Failed to fetch query history: %s", exc)
+        return jsonify({
+            'success': False,
+            'error': 'Failed to fetch history'
+        }), 500
+
+
 @query_bp.route('/query', methods=['POST'])
+@require_auth
 def submit_query():
     """Submit a new query for processing.
     
@@ -61,11 +172,22 @@ def submit_query():
         JSON response with query ID and initial status
     """
     init_services()
-    
+
     try:
+        start_time = time.perf_counter()
+        user_id = getattr(request, 'user_id', None)
+
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            }), 401
+
         query_id = str(uuid.uuid4())
         query_text = None
         input_type = 'text'
+        audio_path = None
+        image_path = None
 
         data = request.get_json(silent=True)
 
@@ -118,6 +240,23 @@ def submit_query():
                         query_type='general'
                     )
 
+                    processing_time = time.perf_counter() - start_time
+                    image_query_text = (request.form.get('context') or '').strip() or 'Image query'
+                    store_query_record(
+                        query_id=query_id,
+                        user_id=user_id,
+                        input_type='image',
+                        query_text=image_query_text,
+                        subject=None,
+                        query_type='general',
+                        formatted_solution=formatted,
+                        raw_solution=analysis_result['analysis'],
+                        context=None,
+                        audio_path=None,
+                        image_path=image_path,
+                        processing_time=processing_time
+                    )
+
                     return jsonify({
                         'success': True,
                         'query_id': query_id,
@@ -159,20 +298,37 @@ def submit_query():
             
             if response['success']:
                 # Format the solution
+                query_type_value = detect_query_type(query_text)
                 formatted = solution_formatter.format_solution(
                     response['answer'],
-                    query_type=detect_query_type(query_text)
+                    query_type=query_type_value
                 )
                 
                 # Generate audio if requested
                 audio_data = None
                 if data and data.get('include_audio', False):
                     tts_result = tts_service.synthesize_speech(
-                        formatted['display_text']
+                        formatted.get('display_text', '')
                     )
                     if tts_result['success']:
                         audio_data = tts_result['audio_base64']
                 
+                processing_time = time.perf_counter() - start_time
+                store_query_record(
+                    query_id=query_id,
+                    user_id=user_id,
+                    input_type=input_type,
+                    query_text=query_text,
+                    subject=subject,
+                    query_type=query_type_value,
+                    formatted_solution=formatted,
+                    raw_solution=response['answer'],
+                    context=context,
+                    audio_path=audio_path,
+                    image_path=image_path,
+                    processing_time=processing_time
+                )
+
                 return jsonify({
                     'success': True,
                     'query_id': query_id,
@@ -330,21 +486,6 @@ def get_audio_response(query_id):
             'success': False,
             'error': str(e)
         }), 500
-
-
-@query_bp.route('/history', methods=['GET'])
-def get_query_history():
-    """Get query history for the current user.
-    
-    Returns:
-        JSON response with query history
-    """
-    # In production, this would retrieve from database based on user session
-    return jsonify({
-        'success': True,
-        'history': [],
-        'message': 'Query history would be retrieved from database'
-    })
 
 
 def allowed_image_file(filename):
